@@ -1,25 +1,42 @@
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.util.ArrayList;
+import java.util.Observable;
+import java.util.Observer;
 
-
-import javax.swing.*;
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JPanel;
+import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.TableCellRenderer;
 
-public class DownloadManager extends JFrame implements DownloadObserver {
+public class DownloadManager extends JFrame implements Observer {
     private JTextField nameTextField = new JTextField(15);
-    private JTextField sizeTextField = new JTextField(15);
-    private JTextField speedTextField = new JTextField(15);
+    private JTextField sizeTextField = new JTextField(12);
+
+    private JTextField speedTextField = new JTextField(12);
 
     private DownloadsTableModel tableModel = new DownloadsTableModel();
+
     private JTable table;
 
     private JButton pauseButton = new JButton("Pause");
+
     private JButton resumeButton = new JButton("Resume");
+
     private JButton cancelButton, clearButton;
 
     private Download selectedDownload;
+
     private boolean clearing;
 
     public DownloadManager() {
@@ -29,6 +46,7 @@ public class DownloadManager extends JFrame implements DownloadObserver {
 
         // Set up add panel.
         JPanel addPanel = new JPanel();
+
         nameTextField.setText("Enter the file name");
         sizeTextField.setText("Enter the file size (MB)");
         speedTextField.setText("Enter the internet speed");
@@ -59,6 +77,7 @@ public class DownloadManager extends JFrame implements DownloadObserver {
         ProgressRenderer renderer = new ProgressRenderer(0, 100);
         renderer.setStringPainted(true); // show progress text
         table.setDefaultRenderer(JProgressBar.class, renderer);
+
         table.setRowHeight((int) renderer.getPreferredSize().getHeight());
 
         JPanel downloadsPanel = new JPanel();
@@ -111,6 +130,7 @@ public class DownloadManager extends JFrame implements DownloadObserver {
     }
 
     private void actionAdd() {
+
         String name = nameTextField.getText();
         float size = Float.parseFloat(sizeTextField.getText());
         float speed = Float.parseFloat(speedTextField.getText());
@@ -191,17 +211,193 @@ public class DownloadManager extends JFrame implements DownloadObserver {
         }
     }
 
-    @Override
-    public void update(Download download) {
+    public void update(Observable o, Object arg) {
         // Update buttons if the selected download has changed.
-        if (selectedDownload != null && selectedDownload.equals(download))
+        if (selectedDownload != null && selectedDownload.equals(o))
             updateButtons();
     }
 
     // Run the Download Manager.
     public static void main(String[] args) {
         DownloadManager manager = new DownloadManager();
-        System.err.println(manager);
         manager.setVisible(true);
+    }
+}
+
+class Download extends Observable implements Runnable {
+    private static final int MAX_BUFFER_SIZE = 1024;
+
+    public static final String STATUSES[] = { "Downloading", "Paused", "Complete", "Cancelled",
+            "Error" };
+
+    public String name;
+
+    public static final int DOWNLOADING = 0;
+
+    public static final int PAUSED = 1;
+
+    public static final int COMPLETE = 2;
+
+    public static final int CANCELLED = 3;
+
+    public static final int ERROR = 4;
+
+    private float size; // size of download in bytes
+
+    private float speed;
+
+    private float downloaded; // number of bytes downloaded
+
+    private int status; // current status of download
+
+    // Constructor for Download.
+    public Download(String name, Float size, Float speed) {
+        this.name = name;
+        this.size = size;
+        this.speed = speed;
+        downloaded = 0;
+        status = DOWNLOADING;
+
+        // Begin the download.
+        download();
+    }
+
+    // Get this download's URL.
+    public String getName() {
+        return name;
+    }
+
+    // Get this download's size.
+    public float getSize() {
+        return size;
+    }
+
+    // Get this download's progress.
+    public float getProgress() {
+        return ((float) downloaded / size) * 100;
+    }
+
+    public int getStatus() {
+        return status;
+    }
+
+    public void pause() {
+        status = PAUSED;
+        stateChanged();
+    }
+
+    public void resume() {
+        status = DOWNLOADING;
+        stateChanged();
+        download();
+    }
+
+    public void cancel() {
+        status = CANCELLED;
+        stateChanged();
+    }
+
+    private void download() {
+        Thread thread = new Thread(this);
+        thread.start();
+    }
+
+    // Simulate download file.
+    public void run() {
+        while(downloaded<= size) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                System.out.println(e);
+            }
+            if(status == DOWNLOADING)
+            {
+                downloaded += speed;
+                stateChanged();
+            }
+        }
+
+        if (status == DOWNLOADING) {
+            status = COMPLETE;
+            stateChanged();
+        }
+    }
+
+    private void stateChanged() {
+        setChanged();
+        notifyObservers();
+    }
+}
+
+class DownloadsTableModel extends AbstractTableModel implements Observer {
+    private static final String[] columnNames = { "File Name", "Size", "Progress", "Status" };
+
+    private static final Class[] columnClasses = { String.class, String.class, JProgressBar.class,
+            String.class };
+
+    private ArrayList<Download> downloadList = new ArrayList<Download>();
+
+    public void addDownload(Download download) {
+        download.addObserver(this);
+        downloadList.add(download);
+        fireTableRowsInserted(getRowCount() - 1, getRowCount() - 1);
+    }
+
+    public Download getDownload(int row) {
+        return (Download) downloadList.get(row);
+    }
+
+    public void clearDownload(int row) {
+        downloadList.remove(row);
+        fireTableRowsDeleted(row, row);
+    }
+
+    public int getColumnCount() {
+        return columnNames.length;
+    }
+
+    public String getColumnName(int col) {
+        return columnNames[col];
+    }
+
+    public Class getColumnClass(int col) {
+        return columnClasses[col];
+    }
+
+    public int getRowCount() {
+        return downloadList.size();
+    }
+
+    public Object getValueAt(int row, int col) {
+        Download download = downloadList.get(row);
+        switch (col) {
+            case 0: // Name
+                return download.getName();
+            case 1: // Size
+                float size = download.getSize();
+                return (size == -1) ? "" : Float.toString(size);
+            case 2: // Progress
+                return download.getProgress();
+            case 3: // Status
+                return Download.STATUSES[download.getStatus()];
+        }
+        return "";
+    }
+
+    public void update(Observable o, Object arg) {
+        int index = downloadList.indexOf(o);
+        fireTableRowsUpdated(index, index);
+    }
+}
+
+class ProgressRenderer extends JProgressBar implements TableCellRenderer {
+    public ProgressRenderer(int min, int max) {
+        super(min, max);
+    }
+
+    public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                                                   boolean hasFocus, int row, int column) {
+        setValue((int) ((Float) value).floatValue());
+        return this;
     }
 }
