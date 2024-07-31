@@ -11,3 +11,6 @@ Inorder to show simulation enter one file name let say File1, and then enter the
 
 Now by clicking Add Download it will start simulation
 ![image](https://github.com/user-attachments/assets/9ab75e44-dc3d-42cc-be20-d5cfd6edc801)
+
+Different Operations on Files like pause, Resume, delete and clear.
+![image](https://github.com/user-attachments/assets/e7e4ee02-7524-4bec-89d0-c0500a2a399a)
